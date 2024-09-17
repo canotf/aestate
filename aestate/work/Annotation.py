@@ -36,14 +36,18 @@ def Select(sql: str):
     使用此装饰器,可以将大量重复代码继承到此装饰器内部实现
 
     使用方法:
-        @Select(sql="SELECT * FROM demo_table WHERE t_id<=%s AND t_msg like %s", params=['${t_id}', '%${t_msg}%'])
 
-        sql:执行的sql语句,需要加密的参数使用`%s`表示
+        @Select(sql="SELECT * FROM demo_table WHERE t_id<=${不加密} AND t_msg like #{加密}")
 
-        params:加密参数的内容,标记使用传参请使用`${字段名}`表示
+    有两种符号可以作为sql的字段插入形式:
+
+        ${字段}:这种方式是直接将文字插入进去,在面对sql注入时无法有效避免
+
+        #{字段}:将字段使用%s过滤,能有效防止sql注入,但并非100%有效
+            依靠的是你所使用的第三方库内置游标的:`mogrify`方法,请在使用前查看
 
 
-
+    :param sql:执行的sql语句,需要加密的参数使用`%s`表示
     """
 
     def base_func(cls):
@@ -233,13 +237,13 @@ def ReadXml(filename):
     return set_to_field
 
 
-def Item(id, d=False):
+def Item(_id, d=False):
     """
     将xml的item节点映射到当前方法,对应的id字段为xml节点的id
     """
 
     def replaceNextLine(sql):
-        sql = str(sql).replace('\n', '')
+        sql = str(sql).replace('\n', ' ')
         sql = str(sql).replace('  ', ' ')
         if '  ' in sql:
             return replaceNextLine(sql)
@@ -254,7 +258,7 @@ def Item(id, d=False):
 
             xml_node = None
             for v in xml.children['item']:
-                if 'id' in v.attrs.keys() and v.attrs['id'].text == id:
+                if 'id' in v.attrs.keys() and v.attrs['id'].text == _id:
                     xml_node = v
                     break
             if xml_node is not None:
@@ -263,7 +267,7 @@ def Item(id, d=False):
             else:
                 result_text_node = None
                 ALog.log_error(
-                    f"`{id}` does not exist in the xml node.file:({obj._xml_file_name})", obj=TagAttributeError,
+                    f"`{_id}` does not exist in the xml node.file:({obj._xml_file_name})", obj=TagAttributeError,
                     raise_exception=True)
             # 美化sql
             if result_text_node is None:
@@ -290,15 +294,12 @@ def Item(id, d=False):
     return base_func
 
 
-def Objects():
-    """
-    注入一个objects,可以不用new
-    """
-
-    def base_func(cls):
+def JsonIgnore(*fields):
+    def base_func(fn):
         def _wrapper_(*args, **kwargs):
-            obj = cls()
-            obj.objects = obj
+            _self = args[0]
+            _self.EXEC_FUNCTION = [*fields]
+            return _self
 
         return _wrapper_
 

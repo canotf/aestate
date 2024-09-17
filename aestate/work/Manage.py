@@ -1,8 +1,9 @@
+import inspect
+
 from aestate.ajson import aj
 from aestate.exception import FieldNotExist
-from aestate.util import others
+from aestate.util import pack
 from aestate.util.Log import ALog
-from aestate.work.Cache import PojoManage
 
 from aestate.work.Serialize import QuerySet
 from aestate.work.orm import AOrm
@@ -14,6 +15,12 @@ from aestate.work import Banner
 class Pojo(repository.Repository):
     # 是否已经初始化过对象
     __init_pojo__ = False
+    # 执行的
+    EXEC_FUNCTION = None
+
+    @classmethod
+    def objects(cls):
+        return cls()
 
     def __init__(self, config_obj=None, log_conf=None, close_log=False, serializer=QuerySet, **kwargs):
         """
@@ -58,15 +65,12 @@ class Pojo(repository.Repository):
         fds = {}
         for key, value in fields.items():
             # 取出这个值引用对象的父类
-            try:
-                t_v = value.__class__.__base__
-                if t_v in [tag.Template, tag.baseTag]:
-                    if not hasattr(self, key) or getattr(self, key) is None or t_v in [tag.Template, tag.baseTag]:
-                        setattr(self, key, value.default)
-                    fds[key] = value
-                    fds[key].name = key
-            except SyntaxError:
-                continue
+            sub = pack.dp_equals_base(value.__class__, tag.baseTag)
+            if sub:
+                if not hasattr(self, key) or getattr(self, key) is None or sub:
+                    setattr(self, key, value.default)
+                fds[key] = value
+                fds[key].name = key
 
         self._fields = fds
 
@@ -82,24 +86,9 @@ class Pojo(repository.Repository):
 
     def to_json(self, bf=False):
         """
-        将此叶子节点转json处理
+        转json字符串
         """
-        # 从内存地址获取限定对象
-        # 将需要的和不需要的合并
-
-        # 得到当前所有的字段
-        all_fields = self.get_all_using_field()
-        new_dict = {}
-        for key in all_fields.keys():
-            # 当字段为未填充状态时，默认定义为空
-            if hasattr(self, key):
-                new_dict[key] = getattr(self, key)
-            else:
-                if isinstance(all_fields[key], QuerySet):
-                    new_dict[key] = all_fields[key].to_json(bf)
-                else:
-                    new_dict[key] = None
-        return aj.parse(new_dict, bf=bf)
+        return aj.parse(self.to_dict(), bf=bf)
 
     def to_dict(self):
         """
@@ -110,7 +99,11 @@ class Pojo(repository.Repository):
         for key in all_fields.keys():
             # 当字段为未填充状态时，默认定义为空
             if hasattr(self, key):
-                new_dict[key] = getattr(self, key)
+                v = getattr(self, key)
+                if isinstance(v, QuerySet) or isinstance(v, Pojo):
+                    new_dict[key] = v.to_dict()
+                else:
+                    new_dict[key] = v
             else:
                 if isinstance(all_fields[key], QuerySet):
                     new_dict[key] = all_fields[key].to_dict()
@@ -128,8 +121,14 @@ class Pojo(repository.Repository):
         """
         添加一个不会被解析忽略的字段
         """
-        if key not in self.__append_field__.keys():
+        # UPDATE [1.0.6a2] 去除对替换的判断,将直接修改原本的值
+        setattr(self, key, default_value)
+        if key in self.getFields() and self.getFields().get(key).__class__ == tag.boolField:
+            self.__append_field__[key] = bool(default_value)
+            setattr(self, key, default_value)
+        else:
             self.__append_field__[key] = default_value
+            # setattr(self, key, default_value)
 
     def remove_field(self, key):
         """
@@ -172,17 +171,14 @@ class Pojo(repository.Repository):
             msg='The pojo object has not been initialized yet, and no configuration items have been obtained',
             obj=FieldNotExist, LogObject=self.log_obj, raise_exception=True)
 
-    @classmethod
-    def objects(cls):
-        return cls()
-
-    def __new__(cls, *args, **kwargs):
-        instance = PojoManage.get(cls, *args, **kwargs)
-        cls.__init_pojo__ = True
-        return instance
+    # def __getattr__(self, item):
+    #     if item in self.getFields() and self.getFields().get(item).__class__ == tag.boolField:
+    #         return bool(object.__getattribute__(self, item))
+    #     else:
+    #         return object.__getattribute__(self, item)
 
 
-class model(Pojo):
+class Model(Pojo):
     """
     这个只是为了满足django用户的习惯
     """

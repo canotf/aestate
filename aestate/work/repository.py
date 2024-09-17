@@ -1,19 +1,16 @@
-import copy
-
 from aestate.work.Modes import EX_MODEL
 from aestate.work.Serialize import QuerySet
 from aestate.exception import FieldNotExist
 from aestate.dbs import _mysql
 from aestate.work.sql import ExecuteSql, ProxyOpera
 from aestate.util.Log import ALog
-
 from aestate.work.orm import AOrm
 
 # 每个任务唯一ID
 import uuid
 
 
-class Repository:
+class Repository(object):
     """
     - POJO类
         - 继承该类表名此类为数据库的pojo类
@@ -109,8 +106,6 @@ class Repository:
             self, key='result', data=kwargs, val=None)
         self.ParseUtil.set_field_compulsory(self, key='log_obj', data=kwargs,
                                             val=ALog(**log_conf) if log_conf is not None else None)
-        if hasattr(self, 'close_log') and not self.close_log and not self.abst and not self.__init_pojo__:
-            ALog.log(obj=self, msg='Being Initialize this object', LogObject=self.log_obj)
         self.ParseUtil.set_field_compulsory(
             self, key='serializer', data=kwargs, val=serializer)
         if not self.abst:
@@ -120,10 +115,8 @@ class Repository:
             # 连接池
             if hasattr(self, 'config_obj') and self.config_obj:
                 self.db_util = ExecuteSql.Db_opera(
-                    creator=self.ParseUtil.fieldExist(
-                        self.config_obj, 'creator', raise_exception=True),
-                    POOL=None if 'POOL' not in kwargs.keys(
-                    ) else kwargs['POOL'],
+                    creator=self.ParseUtil.fieldExist(self.config_obj, 'creator', raise_exception=True),
+                    POOL=None if 'POOL' not in kwargs.keys() else kwargs['POOL'],
                     **self.ParseUtil.fieldExist(self.config_obj, 'kw', raise_exception=True))
             else:
                 ALog.log_error('`config_obj` is missing', AttributeError, LogObject=self.log_obj, raise_exception=True)
@@ -444,3 +437,33 @@ class Repository:
             else:
                 data = operation(self.datas, i)
             self.datas[i].add_field(name, data.to_dict())
+
+    async def find_all_async(self, *args, **kwargs):
+        return self.find_all(*args, **kwargs)
+
+    async def find_field_async(self, *args, **kwargs):
+        return self.find_field(*args, **kwargs)
+
+    async def find_one_async(self, *args, **kwargs):
+        return self.find_one(*args, **kwargs)
+
+    async def find_many_async(self, *args, **kwargs):
+        return self.find_many(*args, **kwargs)
+
+    async def find_sql_async(self, *args, **kwargs):
+        return self.find_sql(*args, **kwargs)
+
+    async def update_async(self, *args, **kwargs):
+        return self.update(*args, **kwargs)
+
+    async def remove_async(self, *args, **kwargs):
+        return self.remove(*args, **kwargs)
+
+    async def save_async(self, *args, **kwargs):
+        return self.save(*args, **kwargs)
+
+    async def create_async(self, pojo, **kwargs):
+        return self.create(pojo, **kwargs)
+
+    async def execute_sql_async(self, sql, params=None, mode=EX_MODEL.SELECT, **kwargs):
+        return self.execute_sql(sql=sql, params=params, mode=mode, **kwargs)

@@ -1,8 +1,8 @@
 import sys
 
-from aestate.exception import MySqlErrorTest
+from aestate.exception import BaseSqlError
 from aestate.util.Log import ALog
-from aestate.opera.DBPool.pooled_db import PooledDB
+from dbutils.pooled_db import PooledDB
 from aestate.work.Cache import SqlCacheManage, CacheStatus
 
 
@@ -23,7 +23,7 @@ def parse_kwa(db, **kwargs):
         cursor = db.cursor()
         # 是否执行多条sql
         many_flay = 'many' in kwargs.keys() and kwargs['many']
-        if 'print_sql' in kwargs.keys() and kwargs['print_sql'] is True:
+        if ('print_sql' in kwargs.keys() and kwargs['print_sql'] is True) or (kwargs['config_obj'].print_sql is True):
             _l = sys._getframe().f_back.f_lineno
             msg = f'{kwargs["sql"]} - many=True' if many_flay else kwargs['sql']
             ALog.log(obj=db, line=_l, task_name='ASQL', msg=msg,
@@ -32,9 +32,10 @@ def parse_kwa(db, **kwargs):
             cursor.executemany(kwargs['sql'],
                                tuple(kwargs['params']) if 'params' in kwargs.keys() and kwargs['params'] else ())
         else:
-            cursor.execute(kwargs['sql'], tuple(kwargs['params'])
-            if 'params' in kwargs.keys() and kwargs['params']
-            else ())
+            if 'params' in kwargs.keys() and kwargs['params']:
+                cursor.execute(kwargs['sql'], tuple(kwargs['params']))
+            else:
+                cursor.execute(kwargs['sql'])
             # try:
             #     CACodeLog.log(obj=db, line=_l, task_name='Print Sql', msg=cursor._executed)
             # except:
@@ -42,8 +43,7 @@ def parse_kwa(db, **kwargs):
         return cursor
     except Exception as e:
         db.rollback()
-        mysql_err = MySqlErrorTest(e)
-        mysql_err.ver()
+        mysql_err = BaseSqlError(e)
         mysql_err.raise_exception()
 
 
@@ -99,9 +99,9 @@ class Db_opera(PooledDB):
             return _result
         except Exception as e:
             db.rollback()
-            ALog.log_error(
-                msg='The pojo object has not been initialized yet, and no configuration items have been obtained',
-                obj=e, LogObject=kwargs['log_obj'] if 'log_obj' in kwargs.keys() else None, raise_exception=True)
+            ALog.log_error(msg=str(e), obj=e,
+                           LogObject=kwargs['log_obj'] if 'log_obj' in kwargs.keys() else None,
+                           raise_exception=True)
         finally:
             db.close()
 
@@ -130,7 +130,7 @@ class Db_opera(PooledDB):
         except Exception as e:
             db.rollback()
             ALog.log_error(
-                msg='The pojo object has not been initialized yet, and no configuration items have been obtained',
+                msg=str(e.args),
                 obj=e, LogObject=kwargs['log_obj'] if 'log_obj' in kwargs.keys() else None, raise_exception=True)
         finally:
             db.close()
